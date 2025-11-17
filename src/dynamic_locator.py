@@ -26,6 +26,9 @@ class DynamicLocator:
         self.device = device
         self.logger = logger
 
+        # 滑动位置跟踪（核心！）
+        self.current_scroll_offset = 0  # 当前滑动偏移
+
     def find_comment_by_text(self, target_text, timeout=5):
         """
         在当前屏幕上查找评论
@@ -107,55 +110,130 @@ class DynamicLocator:
 
         return {'found': False}
 
-    def scroll_to_find_comment(self, target_text, max_scrolls=5, scroll_distance=100):
+    def scroll_to_find_comment(self, target_text, comment_scroll_offset=None,
+                              current_list_offset=None, max_scrolls=10):
         """
-        如果当前屏幕找不到，滑动寻找
+        智能滑动寻找评论（核心修复！）
 
         Args:
             target_text: 目标评论文本
+            comment_scroll_offset: 评论获取时的滑动偏移（重要！）
+            current_list_offset: 当前评论列表的滑动偏移（重要！）
             max_scrolls: 最多滑动次数
-            scroll_distance: 每次滑动距离
 
         Returns:
             dict: 找到的评论信息或空字典
+
+        工作原理：
+        1. 如果知道评论的滑动偏移，先回滚到评论位置附近
+        2. 在当前位置尝试查找
+        3. 如果没找到，进行双向搜索（先向下，再向上）
         """
         if self.logger:
-            self.logger.info(f"📍 滑动寻找评论: {target_text[:40]}... (最多滑动 {max_scrolls} 次)")
+            self.logger.info(f"🎯 智能定位评论: {target_text[:40]}...")
         else:
-            print(f"📍 滑动寻找评论: {target_text[:40]}... (最多滑动 {max_scrolls} 次)")
+            print(f"🎯 智能定位评论: {target_text[:40]}...")
 
-        # 获取容器
-        container = self.device.device(
-            resourceId=DouyinElementIds.COMMENT_LIST_CONTAINER
-        )
+        # 第1步：智能回滚到评论位置附近
+        if comment_scroll_offset is not None and current_list_offset is not None:
+            # 计算需要回滚的距离
+            scroll_delta = current_list_offset - comment_scroll_offset
 
-        for scroll_idx in range(max_scrolls):
-            # 尝试找到
+            if self.logger:
+                self.logger.info(f"  评论在偏移 {comment_scroll_offset}，当前偏移 {current_list_offset}，需要调整 {scroll_delta}")
+            else:
+                print(f"  评论在偏移 {comment_scroll_offset}，当前偏移 {current_list_offset}，需要调整 {scroll_delta}")
+
+            if scroll_delta > 0:
+                # 需要向下滚动
+                if self.logger:
+                    self.logger.info(f"  ↓ 向下滚动 {scroll_delta} 次，回到评论位置...")
+                else:
+                    print(f"  ↓ 向下滚动 {scroll_delta} 次，回到评论位置...")
+
+                for i in range(scroll_delta):
+                    self.device.drag_comment_list(direction='down', steps=3)
+                    time.sleep(0.5)
+                    self.current_scroll_offset -= 1
+
+            elif scroll_delta < 0:
+                # 需要向上滚动
+                scroll_up_count = abs(scroll_delta)
+                if self.logger:
+                    self.logger.info(f"  ↑ 向上滚动 {scroll_up_count} 次，回到评论位置...")
+                else:
+                    print(f"  ↑ 向上滚动 {scroll_up_count} 次，回到评论位置...")
+
+                for i in range(scroll_up_count):
+                    self.device.drag_comment_list(direction='up', steps=3)
+                    time.sleep(0.5)
+                    self.current_scroll_offset += 1
+
+        # 第2步：在当前位置尝试查找
+        result = self.find_comment_by_text(target_text, timeout=2)
+        if result['found']:
+            if self.logger:
+                self.logger.info(f"✓ 在当前位置找到评论")
+            else:
+                print(f"✓ 在当前位置找到评论")
+            return result
+
+        # 第3步：双向搜索（先向下，再向上）
+        if self.logger:
+            self.logger.info(f"  当前位置未找到，开始双向搜索...")
+        else:
+            print(f"  当前位置未找到，开始双向搜索...")
+
+        # 先向下搜索
+        for scroll_idx in range(max_scrolls // 2):
+            if self.logger:
+                self.logger.debug(f"  ↓ 向下搜索 {scroll_idx + 1}...")
+            else:
+                print(f"  ↓ 向下搜索 {scroll_idx + 1}...")
+
+            self.device.drag_comment_list(direction='down', steps=3)
+            self.current_scroll_offset -= 1
+            time.sleep(0.8)
+
             result = self.find_comment_by_text(target_text, timeout=2)
-
             if result['found']:
                 if self.logger:
-                    self.logger.info(f"✓ 第 {scroll_idx + 1} 次尝试找到")
+                    self.logger.info(f"✓ 向下搜索第 {scroll_idx + 1} 次找到")
                 else:
-                    print(f"✓ 第 {scroll_idx + 1} 次尝试找到")
+                    print(f"✓ 向下搜索第 {scroll_idx + 1} 次找到")
                 return result
 
-            # 没找到，向上滑动
-            if scroll_idx < max_scrolls - 1:
+        # 再向上搜索（需要先回到起点再向上）
+        # 回到起点
+        for i in range(max_scrolls // 2):
+            self.device.drag_comment_list(direction='up', steps=3)
+            self.current_scroll_offset += 1
+            time.sleep(0.3)
+
+        # 向上搜索
+        for scroll_idx in range(max_scrolls // 2):
+            if self.logger:
+                self.logger.debug(f"  ↑ 向上搜索 {scroll_idx + 1}...")
+            else:
+                print(f"  ↑ 向上搜索 {scroll_idx + 1}...")
+
+            self.device.drag_comment_list(direction='up', steps=3)
+            self.current_scroll_offset += 1
+            time.sleep(0.8)
+
+            result = self.find_comment_by_text(target_text, timeout=2)
+            if result['found']:
                 if self.logger:
-                    self.logger.debug(f"  滑动 {scroll_idx + 1}/{max_scrolls}...")
+                    self.logger.info(f"✓ 向上搜索第 {scroll_idx + 1} 次找到")
                 else:
-                    print(f"  滑动 {scroll_idx + 1}/{max_scrolls}...")
+                    print(f"✓ 向上搜索第 {scroll_idx + 1} 次找到")
+                return result
 
-                # 使用和评论提取相同的滑动方式,避免触发长按菜单
-                self.device.drag_comment_list(direction='up', steps=3)
-                time.sleep(1)
-
-        # 所有滑动都失败了
+        # 所有搜索都失败了
         if self.logger:
-            self.logger.warning(f"✗ 滑动 {max_scrolls} 次后仍未找到: {target_text[:40]}...")
+            self.logger.warning(f"✗ 双向搜索 {max_scrolls} 次后仍未找到: {target_text[:40]}...")
         else:
-            print(f"✗ 滑动 {max_scrolls} 次后仍未找到: {target_text[:40]}...")
+            print(f"✗ 双向搜索 {max_scrolls} 次后仍未找到: {target_text[:40]}...")
 
         return {'found': False}
 

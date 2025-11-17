@@ -37,6 +37,10 @@ class RealtimeCommentMonitor:
         self.comment_cache = {}  # key: bounds_str, value: comment_data
         self.all_comments = []   # 所有评论的完整列表
 
+        # 滑动位置跟踪（核心！）
+        self.scroll_offset = 0   # 当前向上滑动的累计次数
+        self.total_scrolls = 0   # 总滑动次数
+
         # 配置
         self.timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
@@ -66,7 +70,7 @@ class RealtimeCommentMonitor:
                 return []
 
             # 第一次提取（不滑动）
-            print("📍 第 1 次: 提取当前评论...\n")
+            print("📍 第 1 次: 提取当前评论（滑动偏移: 0）...\n")
             self._extract_current_comments()
 
             # 滑动并提取
@@ -76,11 +80,15 @@ class RealtimeCommentMonitor:
                 # 直接对评论容器元素进行滚动（最稳定的方案）
                 self.device.drag_comment_list(direction='up', steps=3)
 
+                # 更新滑动偏移（向上滑动，偏移+1）
+                self.scroll_offset += 1
+                self.total_scrolls += 1
+
                 # 等待加载
                 time.sleep(interval)
 
                 # 提取当前屏幕的评论
-                print(" 提取新评论...\n")
+                print(f" 提取新评论（当前滑动偏移: {self.scroll_offset}）...\n")
                 self._extract_current_comments()
 
             # 显示统计
@@ -193,6 +201,7 @@ class RealtimeCommentMonitor:
             'class': element_info['class'],
             'content_desc': element_info['content_desc'],
             'extraction_time': datetime.now().isoformat(),
+            'scroll_offset': self.scroll_offset,  # 🔑 记录获取时的滑动偏移
             'position': {
                 'x': bounds[0] if bounds else 0,
                 'y': bounds[1] if bounds else 0,
@@ -382,6 +391,50 @@ class RealtimeCommentMonitor:
             print(f"✗ 导出 CSV 失败: {e}")
             return None
 
+    def get_scroll_info(self):
+        """
+        获取滑动信息
+
+        Returns:
+            dict: 滑动信息，包含总滑动次数和当前偏移
+        """
+        return {
+            'total_scrolls': self.total_scrolls,
+            'current_offset': self.scroll_offset,
+        }
+
+    def reset_scroll_position(self, interval=0.5):
+        """
+        重置滚动位置 - 向下滚动回到初始位置
+
+        Args:
+            interval: 每次滚动后的等待时间
+
+        Returns:
+            bool: 是否成功重置
+        """
+        if self.scroll_offset == 0:
+            print("✓ 已在初始位置，无需重置")
+            return True
+
+        print(f"\n🔄 重置滚动位置（需要向下滚动 {self.scroll_offset} 次）...")
+
+        try:
+            for i in range(self.scroll_offset):
+                print(f"  ↓ 向下滚动 {i + 1}/{self.scroll_offset}...", end='', flush=True)
+                self.device.drag_comment_list(direction='down', steps=3)
+                time.sleep(interval)
+                print(" ✓")
+
+            # 重置偏移
+            self.scroll_offset = 0
+            print("✓ 滚动位置已重置到初始状态\n")
+            return True
+
+        except Exception as e:
+            print(f"\n✗ 重置滚动位置失败: {e}")
+            return False
+
     def _show_summary(self):
         """显示统计摘要"""
         print("\n" + "=" * 80)
@@ -392,7 +445,9 @@ class RealtimeCommentMonitor:
             print("⚠️  未提取到任何评论")
             return
 
-        print(f"总数: {len(self.all_comments)} 条\n")
+        print(f"总数: {len(self.all_comments)} 条")
+        print(f"总滑动次数: {self.total_scrolls} 次")
+        print(f"当前滑动偏移: {self.scroll_offset} 次\n")
 
         # 基础统计
         total_length = sum(c.get('length', 0) for c in self.all_comments)

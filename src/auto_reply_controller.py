@@ -219,15 +219,20 @@ class AutoReplyController:
         return matched
 
     def _execute_replies(self, matched, max_replies=None):
-        """执行自动回复"""
+        """执行自动回复（已优化：支持滑动位置跟踪）"""
         self.logger.info(f"开始自动回复 (最多 {max_replies or '无限'} 条)...")
 
-        # 评论提取时向上滑动,评论在底部,所以不需要滚动
-        # 直接开始回复即可
+        # 🔑 获取当前滑动信息
+        scroll_info = self.comment_monitor.get_scroll_info()
+        current_offset = scroll_info['current_offset']
+
+        self.logger.info(f"当前评论列表滑动偏移: {current_offset}")
         self.logger.info("开始逐个定位并回复评论...")
 
+        # 传递滑动偏移信息给回复引擎
         results = self.reply_engine.batch_reply(
             matched,
+            current_list_offset=current_offset,  # 🔑 传递当前偏移
             wait_between_replies=3,
             max_replies=max_replies
         )

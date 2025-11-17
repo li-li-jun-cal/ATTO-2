@@ -26,12 +26,13 @@ class AutoReplyEngine:
         self.locator = locator
         self.logger = logger or logging.getLogger(__name__)
 
-    def reply_to_comment(self, comment_text, reply_text, max_retries=3):
+    def reply_to_comment(self, comment_text, reply_text, comment_scroll_offset=None,
+                        current_list_offset=None, max_retries=3):
         """
-        自动回复一条评论
+        自动回复一条评论（已优化：支持滑动位置跟踪）
 
         核心步骤:
-        1. 使用 DynamicLocator 找到评论的最新位置
+        1. 使用 DynamicLocator 智能定位评论（传递滑动偏移信息）
         2. 点击评论
         3. 等待回复框打开
         4. 输入回复文本
@@ -40,19 +41,25 @@ class AutoReplyEngine:
         Args:
             comment_text: 评论文本（用于定位）
             reply_text: 要回复的文本
+            comment_scroll_offset: 评论获取时的滑动偏移（重要！）
+            current_list_offset: 当前列表的滑动偏移（重要！）
             max_retries: 最多重试次数
 
         Returns:
             dict: 回复结果 {success: bool, reason: str}
         """
         self.logger.info(f"\n🎯 开始回复评论: {comment_text[:40]}...")
+        if comment_scroll_offset is not None:
+            self.logger.info(f"   评论滑动偏移: {comment_scroll_offset}")
 
         for attempt in range(max_retries):
             try:
-                # 步骤 1: 动态定位评论 (向上滑动查找)
-                self.logger.info(f"  [1/5] 定位评论... (尝试 {attempt + 1}/{max_retries})")
+                # 步骤 1: 智能动态定位评论（传递滑动偏移）
+                self.logger.info(f"  [1/5] 智能定位评论... (尝试 {attempt + 1}/{max_retries})")
                 location = self.locator.scroll_to_find_comment(
                     comment_text,
+                    comment_scroll_offset=comment_scroll_offset,  # 🔑 传递滑动偏移
+                    current_list_offset=current_list_offset,      # 🔑 传递当前偏移
                     max_scrolls=10  # 增加滑动次数,确保能找到
                 )
 
@@ -202,11 +209,15 @@ class AutoReplyEngine:
                 input_box.click()
                 time.sleep(0.5)
 
-            # 输入文本
-            self.device.input_text(reply_text)
-            time.sleep(0.5)
+                # 清空并输入文本
+                input_box.clear_text()
+                input_box.set_text(reply_text)
+                time.sleep(0.5)
 
-            return True
+                return True
+            else:
+                self.logger.error("输入框不存在")
+                return False
 
         except Exception as e:
             self.logger.error(f"输入文本失败: {e}")
@@ -237,12 +248,14 @@ class AutoReplyEngine:
             self.logger.error(f"发送失败: {e}")
             return False
 
-    def batch_reply(self, matched_comments, wait_between_replies=3, max_replies=None):
+    def batch_reply(self, matched_comments, current_list_offset=None,
+                   wait_between_replies=3, max_replies=None):
         """
-        批量回复多条评论
+        批量回复多条评论（已优化：支持滑动位置跟踪）
 
         Args:
-            matched_comments: 匹配的评论列表
+            matched_comments: 匹配的评论列表（每条评论包含 scroll_offset）
+            current_list_offset: 当前列表的滑动偏移
             wait_between_replies: 回复间隔（秒）
             max_replies: 最多回复条数
 
@@ -260,13 +273,18 @@ class AutoReplyEngine:
 
             comment_text = match['comment_text']
             reply_text = match['reply_text']
+            comment_scroll_offset = match.get('full_comment', {}).get('scroll_offset')  # 🔑 获取滑动偏移
 
             self.logger.info(f"\n[{idx}/{len(matched_comments)}] 处理评论...")
+            if comment_scroll_offset is not None:
+                self.logger.info(f"   评论滑动偏移: {comment_scroll_offset}")
 
-            # 执行回复
+            # 执行回复（传递滑动偏移信息）
             result = self.reply_to_comment(
                 comment_text,
                 reply_text,
+                comment_scroll_offset=comment_scroll_offset,  # 🔑 传递滑动偏移
+                current_list_offset=current_list_offset,      # 🔑 传递当前偏移
                 max_retries=2
             )
 
