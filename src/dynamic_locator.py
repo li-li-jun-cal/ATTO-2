@@ -145,16 +145,35 @@ class DynamicLocator:
                 print(f"  评论在偏移 {comment_scroll_offset}，当前偏移 {current_list_offset}，需要调整 {scroll_delta}")
 
             if scroll_delta > 0:
-                # 需要向下滚动
+                # 需要向下滚动（慢速，每次滚动后检查）
                 if self.logger:
-                    self.logger.info(f"  ↓ 向下滚动 {scroll_delta} 次，回到评论位置...")
+                    self.logger.info(f"  ↓ 慢速向下滚动，边滚动边查找...")
                 else:
-                    print(f"  ↓ 向下滚动 {scroll_delta} 次，回到评论位置...")
+                    print(f"  ↓ 慢速向下滚动，边滚动边查找...")
 
                 for i in range(scroll_delta):
-                    self.device.drag_comment_list(direction='down', steps=3)
-                    time.sleep(0.5)
+                    # 使用小步长，避免滚动太快
+                    success = self.device.drag_comment_list(direction='down', steps=2)  # 减小步长
+                    if not success:
+                        # 可能滑出了评论区，停止滚动
+                        if self.logger:
+                            self.logger.warning(f"  ⚠️  滚动失败，可能已到达底部，停止回滚")
+                        else:
+                            print(f"  ⚠️  滚动失败，可能已到达底部，停止回滚")
+                        break
+
+                    time.sleep(0.8)  # 增加等待时间，让UI稳定
                     self.current_scroll_offset -= 1
+
+                    # 每滚动一次就尝试查找，找到就立即停止
+                    if i % 2 == 1:  # 每滚动2次检查一次
+                        temp_result = self.find_comment_by_text(target_text, timeout=1)
+                        if temp_result['found']:
+                            if self.logger:
+                                self.logger.info(f"  ✓ 回滚过程中找到评论（第 {i+1}/{scroll_delta} 次滚动）")
+                            else:
+                                print(f"  ✓ 回滚过程中找到评论（第 {i+1}/{scroll_delta} 次滚动）")
+                            return temp_result
 
             elif scroll_delta < 0:
                 # 需要向上滚动
@@ -165,9 +184,26 @@ class DynamicLocator:
                     print(f"  ↑ 向上滚动 {scroll_up_count} 次，回到评论位置...")
 
                 for i in range(scroll_up_count):
-                    self.device.drag_comment_list(direction='up', steps=3)
-                    time.sleep(0.5)
+                    success = self.device.drag_comment_list(direction='up', steps=2)  # 减小步长
+                    if not success:
+                        if self.logger:
+                            self.logger.warning(f"  ⚠️  滚动失败，停止回滚")
+                        else:
+                            print(f"  ⚠️  滚动失败，停止回滚")
+                        break
+
+                    time.sleep(0.8)
                     self.current_scroll_offset += 1
+
+                    # 每滚动2次检查一次
+                    if i % 2 == 1:
+                        temp_result = self.find_comment_by_text(target_text, timeout=1)
+                        if temp_result['found']:
+                            if self.logger:
+                                self.logger.info(f"  ✓ 回滚过程中找到评论（第 {i+1}/{scroll_up_count} 次滚动）")
+                            else:
+                                print(f"  ✓ 回滚过程中找到评论（第 {i+1}/{scroll_up_count} 次滚动）")
+                            return temp_result
 
         # 第2步：在当前位置尝试查找
         result = self.find_comment_by_text(target_text, timeout=2)
@@ -184,16 +220,23 @@ class DynamicLocator:
         else:
             print(f"  当前位置未找到，开始双向搜索...")
 
-        # 先向下搜索
+        # 先向下搜索（慢速，小步长）
         for scroll_idx in range(max_scrolls // 2):
             if self.logger:
                 self.logger.debug(f"  ↓ 向下搜索 {scroll_idx + 1}...")
             else:
                 print(f"  ↓ 向下搜索 {scroll_idx + 1}...")
 
-            self.device.drag_comment_list(direction='down', steps=3)
+            success = self.device.drag_comment_list(direction='down', steps=2)  # 减小步长
+            if not success:
+                if self.logger:
+                    self.logger.warning(f"  ⚠️  向下搜索时滚动失败，可能已到底部")
+                else:
+                    print(f"  ⚠️  向下搜索时滚动失败，可能已到底部")
+                break
+
             self.current_scroll_offset -= 1
-            time.sleep(0.8)
+            time.sleep(1.0)  # 增加等待时间
 
             result = self.find_comment_by_text(target_text, timeout=2)
             if result['found']:
@@ -204,22 +247,31 @@ class DynamicLocator:
                 return result
 
         # 再向上搜索（需要先回到起点再向上）
-        # 回到起点
+        # 回到起点（慢速回滚）
         for i in range(max_scrolls // 2):
-            self.device.drag_comment_list(direction='up', steps=3)
+            success = self.device.drag_comment_list(direction='up', steps=2)
+            if not success:
+                break
             self.current_scroll_offset += 1
-            time.sleep(0.3)
+            time.sleep(0.5)
 
-        # 向上搜索
+        # 向上搜索（慢速，小步长）
         for scroll_idx in range(max_scrolls // 2):
             if self.logger:
                 self.logger.debug(f"  ↑ 向上搜索 {scroll_idx + 1}...")
             else:
                 print(f"  ↑ 向上搜索 {scroll_idx + 1}...")
 
-            self.device.drag_comment_list(direction='up', steps=3)
+            success = self.device.drag_comment_list(direction='up', steps=2)  # 减小步长
+            if not success:
+                if self.logger:
+                    self.logger.warning(f"  ⚠️  向上搜索时滚动失败，可能已到顶部")
+                else:
+                    print(f"  ⚠️  向上搜索时滚动失败，可能已到顶部")
+                break
+
             self.current_scroll_offset += 1
-            time.sleep(0.8)
+            time.sleep(1.0)  # 增加等待时间
 
             result = self.find_comment_by_text(target_text, timeout=2)
             if result['found']:
