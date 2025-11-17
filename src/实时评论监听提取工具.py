@@ -40,6 +40,9 @@ class RealtimeCommentMonitor:
         # 配置
         self.timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
+        # 滚动距离配置（像素）
+        self.scroll_distance = 260  # 每次滚动的像素距离
+
     def monitor_and_extract(self, scroll_times=5, interval=1):
         """
         实时监听并提取评论
@@ -67,7 +70,7 @@ class RealtimeCommentMonitor:
 
             # 第一次提取（不滑动）
             print("📍 第 1 次: 提取当前评论...\n")
-            self._extract_current_comments()
+            self._extract_current_comments(scroll_index=0)
 
             # 滑动并提取
             for scroll_idx in range(scroll_times):
@@ -79,9 +82,9 @@ class RealtimeCommentMonitor:
                 # 等待加载
                 time.sleep(interval)
 
-                # 提取当前屏幕的评论
+                # 提取当前屏幕的评论，传递滑动索引
                 print(" 提取新评论...\n")
-                self._extract_current_comments()
+                self._extract_current_comments(scroll_index=scroll_idx + 1)
 
             # 显示统计
             self._show_summary()
@@ -94,11 +97,14 @@ class RealtimeCommentMonitor:
             traceback.print_exc()
             return self.all_comments
 
-    def _extract_current_comments(self):
+    def _extract_current_comments(self, scroll_index=0):
         """
         提取当前屏幕上的所有评论
 
         使用 UI 结构解析来精确获取评论的定位信息
+
+        Args:
+            scroll_index: 当前滑动索引（0表示未滑动，1表示滑动1次，以此类推）
         """
         try:
             # 获取 UI 层级树
@@ -116,7 +122,7 @@ class RealtimeCommentMonitor:
 
             # 提取每条评论
             for idx, element_info in enumerate(comment_elements, 1):
-                comment_data = self._parse_comment_element(element_info, idx)
+                comment_data = self._parse_comment_element(element_info, idx, scroll_index)
 
                 # 使用 bounds 作为 key 来判断是否是新评论
                 bounds_key = comment_data['bounds_str']
@@ -163,13 +169,14 @@ class RealtimeCommentMonitor:
         search_recursive(root)
         return comment_elements
 
-    def _parse_comment_element(self, element_info, index):
+    def _parse_comment_element(self, element_info, index, scroll_index=0):
         """
         解析单条评论元素
 
         Args:
             element_info: 元素信息字典
             index: 评论在当前屏幕上的索引
+            scroll_index: 当前滑动索引
 
         Returns:
             dict: 评论数据
@@ -186,6 +193,8 @@ class RealtimeCommentMonitor:
         comment_data = {
             'id': len(self.all_comments) + 1,
             'index_on_screen': index,
+            'scroll_index': scroll_index,  # 新增：记录在第几次滑动时出现
+            'scroll_offset': scroll_index * self.scroll_distance,  # 新增：精确的像素偏移量
             'text': text,
             'length': len(text) if text else 0,
             'bounds': bounds,

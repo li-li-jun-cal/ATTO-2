@@ -26,6 +26,10 @@ class DynamicLocator:
         self.device = device
         self.logger = logger
 
+        # 滚动位置追踪
+        self.current_scroll_index = 0  # 当前滚动索引（从收集评论结束时的位置开始）
+        self.scroll_distance = 260  # 每次滚动的像素距离
+
     def find_comment_by_text(self, target_text, timeout=5):
         """
         在当前屏幕上查找评论
@@ -158,6 +162,122 @@ class DynamicLocator:
             print(f"✗ 滑动 {max_scrolls} 次后仍未找到: {target_text[:40]}...")
 
         return {'found': False}
+
+    def scroll_to_comment_precise(self, target_text, target_scroll_index):
+        """
+        精确滚动到评论位置（新方法 - 使用scroll_index精确计算）
+
+        工作原理：
+        1. 根据目标评论的scroll_index和当前scroll_index，计算需要滚动的次数
+        2. 一次性滚动到目标位置附近
+        3. 在当前屏幕查找评论
+
+        示例：
+        - 评论在scroll_index=0（未滑动），当前在scroll_index=10
+          需要向下滑动10次回到位置0
+        - 评论在scroll_index=4，当前在scroll_index=0
+          需要向上滑动4次到达位置4
+
+        Args:
+            target_text: 目标评论文本
+            target_scroll_index: 目标评论的scroll_index（从评论数据中获取）
+
+        Returns:
+            dict: 找到的评论信息或空字典
+        """
+        if self.logger:
+            self.logger.info(f"📍 精确滚动定位评论: {target_text[:40]}...")
+            self.logger.info(f"   目标位置: scroll_index={target_scroll_index}, 当前位置: scroll_index={self.current_scroll_index}")
+        else:
+            print(f"📍 精确滚动定位评论: {target_text[:40]}...")
+            print(f"   目标位置: scroll_index={target_scroll_index}, 当前位置: scroll_index={self.current_scroll_index}")
+
+        # 计算需要滚动的次数和方向
+        scroll_delta = target_scroll_index - self.current_scroll_index
+
+        if scroll_delta != 0:
+            # 确定滚动方向
+            direction = 'up' if scroll_delta > 0 else 'down'
+            scroll_times = abs(scroll_delta)
+
+            if self.logger:
+                self.logger.info(f"   需要向{direction}滚动 {scroll_times} 次 ({scroll_times * self.scroll_distance} 像素)")
+            else:
+                print(f"   需要向{direction}滚动 {scroll_times} 次 ({scroll_times * self.scroll_distance} 像素)")
+
+            # 执行滚动 - 一次性滚动到目标位置
+            for i in range(scroll_times):
+                self.device.drag_comment_list(direction=direction, steps=3)
+                time.sleep(0.5)  # 短暂等待，让UI稳定
+
+            # 更新当前位置
+            self.current_scroll_index = target_scroll_index
+
+            # 等待UI稳定
+            time.sleep(1)
+        else:
+            if self.logger:
+                self.logger.info("   已在目标位置，无需滚动")
+            else:
+                print("   已在目标位置，无需滚动")
+
+        # 在当前屏幕查找评论
+        result = self.find_comment_by_text(target_text, timeout=3)
+
+        if result['found']:
+            if self.logger:
+                self.logger.info(f"✓ 精确定位成功！")
+            else:
+                print(f"✓ 精确定位成功！")
+            return result
+        else:
+            # 精确滚动失败，尝试微调（向上和向下各尝试1次）
+            if self.logger:
+                self.logger.warning(f"⚠️  精确位置未找到，尝试微调...")
+            else:
+                print(f"⚠️  精确位置未找到，尝试微调...")
+
+            # 向上微调1次
+            self.device.drag_comment_list(direction='up', steps=3)
+            time.sleep(1)
+            result = self.find_comment_by_text(target_text, timeout=2)
+            if result['found']:
+                self.current_scroll_index += 1
+                return result
+
+            # 向下微调2次（回到原位再向下1次）
+            self.device.drag_comment_list(direction='down', steps=3)
+            time.sleep(0.5)
+            self.device.drag_comment_list(direction='down', steps=3)
+            time.sleep(1)
+            result = self.find_comment_by_text(target_text, timeout=2)
+            if result['found']:
+                self.current_scroll_index -= 1
+                return result
+
+            # 回到原位
+            self.device.drag_comment_list(direction='up', steps=3)
+            time.sleep(0.5)
+
+            if self.logger:
+                self.logger.warning(f"✗ 精确定位失败: {target_text[:40]}...")
+            else:
+                print(f"✗ 精确定位失败: {target_text[:40]}...")
+
+            return {'found': False}
+
+    def set_scroll_position(self, scroll_index):
+        """
+        设置当前滚动位置（在评论收集结束后调用）
+
+        Args:
+            scroll_index: 当前滚动索引
+        """
+        self.current_scroll_index = scroll_index
+        if self.logger:
+            self.logger.info(f"设置当前滚动位置: scroll_index={scroll_index}")
+        else:
+            print(f"设置当前滚动位置: scroll_index={scroll_index}")
 
     def find_reply_button(self, comment_bounds, timeout=3):
         """

@@ -26,12 +26,12 @@ class AutoReplyEngine:
         self.locator = locator
         self.logger = logger or logging.getLogger(__name__)
 
-    def reply_to_comment(self, comment_text, reply_text, max_retries=3):
+    def reply_to_comment(self, comment_text, reply_text, scroll_index=None, max_retries=3):
         """
         自动回复一条评论
 
         核心步骤:
-        1. 使用 DynamicLocator 找到评论的最新位置
+        1. 使用 DynamicLocator 找到评论的最新位置（精确滚动或逐次查找）
         2. 点击评论
         3. 等待回复框打开
         4. 输入回复文本
@@ -40,6 +40,7 @@ class AutoReplyEngine:
         Args:
             comment_text: 评论文本（用于定位）
             reply_text: 要回复的文本
+            scroll_index: 评论的scroll_index（如果提供，使用精确滚动定位）
             max_retries: 最多重试次数
 
         Returns:
@@ -49,12 +50,23 @@ class AutoReplyEngine:
 
         for attempt in range(max_retries):
             try:
-                # 步骤 1: 动态定位评论 (向上滑动查找)
+                # 步骤 1: 动态定位评论
                 self.logger.info(f"  [1/5] 定位评论... (尝试 {attempt + 1}/{max_retries})")
-                location = self.locator.scroll_to_find_comment(
-                    comment_text,
-                    max_scrolls=10  # 增加滑动次数,确保能找到
-                )
+
+                # 优先使用精确滚动定位
+                if scroll_index is not None:
+                    self.logger.info(f"  使用精确滚动定位 (scroll_index={scroll_index})")
+                    location = self.locator.scroll_to_comment_precise(
+                        comment_text,
+                        scroll_index
+                    )
+                else:
+                    # 降级到逐次滑动查找
+                    self.logger.info(f"  使用逐次滑动查找")
+                    location = self.locator.scroll_to_find_comment(
+                        comment_text,
+                        max_scrolls=10
+                    )
 
                 if not location['found']:
                     self.logger.warning(f"  ✗ 找不到评论")
@@ -242,7 +254,7 @@ class AutoReplyEngine:
         批量回复多条评论
 
         Args:
-            matched_comments: 匹配的评论列表
+            matched_comments: 匹配的评论列表（包含scroll_index字段）
             wait_between_replies: 回复间隔（秒）
             max_replies: 最多回复条数
 
@@ -260,13 +272,15 @@ class AutoReplyEngine:
 
             comment_text = match['comment_text']
             reply_text = match['reply_text']
+            scroll_index = match.get('scroll_index')  # 获取scroll_index（如果有）
 
             self.logger.info(f"\n[{idx}/{len(matched_comments)}] 处理评论...")
 
-            # 执行回复
+            # 执行回复 - 传递scroll_index以启用精确滚动
             result = self.reply_to_comment(
                 comment_text,
                 reply_text,
+                scroll_index=scroll_index,
                 max_retries=2
             )
 
@@ -274,6 +288,7 @@ class AutoReplyEngine:
                 'comment': comment_text,
                 'keyword': match['keyword'],
                 'reply': reply_text,
+                'scroll_index': scroll_index,
                 'result': result,
             })
 
