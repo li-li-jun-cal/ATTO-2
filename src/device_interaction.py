@@ -318,30 +318,43 @@ class DeviceInteraction:
                 self.logger.warning(f"✗ 评论容器不存在: {container_id}")
                 return False
 
-            # 直接对元素本身进行滚动操作
-            # scroll(dx, dy, steps) 对元素进行滚动
-            # 这样操作比 swipe 更稳定，不会触发长按
-
-            scroll_distance = steps * 50  # 每步 50 像素
+            # 使用 uiautomator2 的滚动 API
+            # forward: 向前滚动（内容向下移动，看到后面的评论）
+            # backward: 向后滚动（内容向上移动，看到前面的评论）
+            # toBeginning: 滚动到开始
+            # toEnd: 滚动到结束
 
             if direction == 'up':
-                # 向上滚动（加载新评论）
-                # 使用负的 ey 值向上滚动
-                container.scroll(ey=-scroll_distance)
-                self.logger.debug(f"✓ 对评论容器向上滚动 {steps} 步")
+                # 向上滚动（加载新评论） - 内容向下移动，所以用 forward
+                try:
+                    container.scroll.vert.forward(steps=steps)
+                    self.logger.debug(f"✓ 对评论容器向上滚动 {steps} 步")
+                except:
+                    # 降级方案：使用 fling
+                    container.fling.vert.forward()
+                    self.logger.debug(f"✓ 对评论容器向上快速滚动")
+
             elif direction == 'down':
-                # 向下滚动
-                container.scroll(ey=scroll_distance)
-                self.logger.debug(f"✓ 对评论容器向下滚动 {steps} 步")
+                # 向下滚动（返回之前的评论） - 内容向上移动，所以用 backward
+                try:
+                    container.scroll.vert.backward(steps=steps)
+                    self.logger.debug(f"✓ 对评论容器向下滚动 {steps} 步")
+                except:
+                    # 降级方案：使用 fling
+                    container.fling.vert.backward()
+                    self.logger.debug(f"✓ 对评论容器向下快速滚动")
+
             else:
                 self.logger.warning(f"✗ 未知的滚动方向: {direction}")
                 return False
 
-            time.sleep(0.2)  # 等待加载
+            time.sleep(0.3)  # 等待加载（稍微增加等待时间）
             return True
 
         except Exception as e:
             self.logger.warning(f"✗ 滚动评论容器失败: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     # ========================================================================
