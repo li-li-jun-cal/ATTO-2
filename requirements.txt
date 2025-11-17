@@ -1,0 +1,20 @@
+# 抖音自动评论回复系统 - 依赖库列表
+# 使用方式: pip install -r requirements.txt
+
+# 核心库
+uiautomator2>=3.0.0          # Android 自动化测试框架
+pyyaml>=6.0                  # YAML 配置文件解析
+requests>=2.28.0             # HTTP 请求库
+Pillow>=9.0.0                # 图像处理库
+
+# 可选库（用于扩展功能）
+# opencv-python>=4.5.0       # 图像识别（可选）
+# numpy>=1.20.0              # 数值计算（可选）
+# lxml>=4.6.0                # XML/HTML 解析（可选）
+
+# 开发依赖（测试和调试用）
+# pytest>=7.0.0              # 单元测试框架
+# pytest-cov>=3.0.0          # 测试覆盖率
+# black>=22.0.0              # 代码格式化
+# pylint>=2.12.0             # 代码质量检查
+# mypy>=0.900                # 类型检查
