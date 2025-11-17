@@ -299,12 +299,12 @@ class DeviceInteraction:
 
         Args:
             direction: 滚动方向 'up' | 'down'
-            steps: 滚动步数
+            steps: 滚动步数（轻量级滑动，每步约30像素）
 
         Returns:
             bool: 是否成功滚动
 
-        注意: 直接对容器元素操作，完全避免长按事件
+        注意: 使用坐标滑动，精确控制滑动距离
 
         Example:
             device.drag_comment_list('up', steps=3)
@@ -318,37 +318,49 @@ class DeviceInteraction:
                 self.logger.warning(f"✗ 评论容器不存在: {container_id}")
                 return False
 
-            # 使用 uiautomator2 的滚动 API
-            # forward: 向前滚动（内容向下移动，看到后面的评论）
-            # backward: 向后滚动（内容向上移动，看到前面的评论）
-            # toBeginning: 滚动到开始
-            # toEnd: 滚动到结束
+            # 获取容器的边界
+            bounds = container.info['bounds']
+            left = bounds['left']
+            top = bounds['top']
+            right = bounds['right']
+            bottom = bounds['bottom']
+
+            # 计算滑动的起点和终点（在容器中心进行滑动）
+            center_x = (left + right) // 2
+
+            # 每步轻量级滑动距离（减小到30像素）
+            step_distance = 30
+            total_distance = steps * step_distance
 
             if direction == 'up':
-                # 向上滚动（加载新评论） - 内容向下移动，所以用 forward
-                try:
-                    container.scroll.vert.forward(steps=steps)
-                    self.logger.debug(f"✓ 对评论容器向上滚动 {steps} 步")
-                except:
-                    # 降级方案：使用 fling
-                    container.fling.vert.forward()
-                    self.logger.debug(f"✓ 对评论容器向上快速滚动")
+                # 向上滑动（加载新评论）：从下往上滑
+                start_y = bottom - 100  # 从底部往上100像素处开始
+                end_y = start_y - total_distance
+
+                # 确保不超出容器范围
+                if end_y < top + 50:
+                    end_y = top + 50
+
+                self.device.swipe(center_x, start_y, center_x, end_y, duration=0.3)
+                self.logger.debug(f"✓ 向上滑动 {total_distance}px (steps={steps})")
 
             elif direction == 'down':
-                # 向下滚动（返回之前的评论） - 内容向上移动，所以用 backward
-                try:
-                    container.scroll.vert.backward(steps=steps)
-                    self.logger.debug(f"✓ 对评论容器向下滚动 {steps} 步")
-                except:
-                    # 降级方案：使用 fling
-                    container.fling.vert.backward()
-                    self.logger.debug(f"✓ 对评论容器向下快速滚动")
+                # 向下滑动（返回之前的评论）：从上往下滑
+                start_y = top + 100  # 从顶部往下100像素处开始
+                end_y = start_y + total_distance
+
+                # 确保不超出容器范围
+                if end_y > bottom - 50:
+                    end_y = bottom - 50
+
+                self.device.swipe(center_x, start_y, center_x, end_y, duration=0.3)
+                self.logger.debug(f"✓ 向下滑动 {total_distance}px (steps={steps})")
 
             else:
                 self.logger.warning(f"✗ 未知的滚动方向: {direction}")
                 return False
 
-            time.sleep(0.3)  # 等待加载（稍微增加等待时间）
+            time.sleep(0.4)  # 等待UI稳定
             return True
 
         except Exception as e:
