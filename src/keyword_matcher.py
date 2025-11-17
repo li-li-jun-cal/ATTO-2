@@ -99,6 +99,8 @@ class KeywordMatcher:
                     'reply_text': '感谢评论！',  # 默认回复
                     'position': comment.get('position'),
                     'bounds_str': comment.get('bounds_str'),
+                    'scroll_index': comment.get('scroll_index'),  # 添加scroll_index
+                    'scroll_offset': comment.get('scroll_offset'),  # 添加scroll_offset
                     'full_comment': comment,
                 })
             return matched
@@ -119,6 +121,8 @@ class KeywordMatcher:
                         'reply_text': self._get_reply_text(keyword),
                         'position': comment.get('position'),
                         'bounds_str': comment.get('bounds_str'),
+                        'scroll_index': comment.get('scroll_index'),  # 添加scroll_index
+                        'scroll_offset': comment.get('scroll_offset'),  # 添加scroll_offset
                         'full_comment': comment,  # 保存完整评论数据
                     })
                     break  # 每条评论只匹配一次

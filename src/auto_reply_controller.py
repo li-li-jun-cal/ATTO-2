@@ -182,6 +182,10 @@ class AutoReplyController:
 
         self.logger.info(f"✓ 收集完成，共 {len(comments)} 条评论")
 
+        # 设置定位器的初始滚动位置（评论收集结束后的位置）
+        self.locator.set_scroll_position(scroll_times)
+        self.logger.info(f"✓ 已设置初始滚动位置: scroll_index={scroll_times}")
+
         # 保存评论
         comments_file = self.output_dir / f'comments_collected_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
         with open(comments_file, 'w', encoding='utf-8') as f:
